@@ -1,0 +1,47 @@
+---
+- name: Monitor Services
+  hosts: all_servers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Verify PostgreSQL Installation
+      block:
+        - name: Check if PostgreSQL is installed
+          command: pg_config
+          register: postgres_installed
+          ignore_errors: true
+
+        - name: Install PostgreSQL if not installed
+          yum:
+            name: postgresql
+            state: present
+          when: postgres_installed.rc != 0
+      when: "'verify_install' in action"
+
+    - name: Check Disk Usage
+      block:
+        - name: Get disk space facts
+          ansible.builtin.shell: df -h
+          register: disk_space
+
+        - name: Send alert email if disk usage > 80%
+          ansible.builtin.mail:
+            to: naveen.sack@gmail.com
+            subject: "Disk Space Alert"
+            body: "Disk usage on {{ inventory_hostname }} is greater than 80%:\n{{ disk_space.stdout }}"
+          when: item.4|int > 80
+          loop: "{{ disk_space.stdout_lines[1:] }}"
+          ignore_errors: yes
+      when: "'check_disk' in action"
+
+    - name: Check PostgreSQL Status
+      when: "'check_status' in action"
+      uri:
+        url: "http://{{ inventory_hostname }}:5432"
+      register: postgres_status
+
+    - name: Display PostgreSQL Status
+      when: "'check_status' in action"
+      debug:
+        var: postgres_status
